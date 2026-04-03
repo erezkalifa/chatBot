@@ -274,6 +274,7 @@
 
     // Refresh
     els.btnRefresh.addEventListener('click', () => {
+      console.debug('[ChatCopilot] Refresh button clicked | parentOrigin:', parentOrigin);
       if (parentOrigin) window.parent.postMessage({ type: 'REFRESH_CONTEXT' }, parentOrigin);
       showToast('Refreshing context...');
     });
@@ -316,7 +317,9 @@
           tabId = data.tabId;
           loadSession(); // async — re-renders once storage is read
         }
-        processContext(data.lastMessage);
+        console.debug('[ChatCopilot] sidebar received CHAT_CONTEXT — lastMessage:',
+          JSON.stringify((data.lastMessage || '').slice(0, 80)), '| forced:', !!data.forced);
+        processContext(data.lastMessage, !!data.forced);
         break;
       }
 
@@ -335,38 +338,36 @@
     }
   }
 
-  function processContext(lastMessage) {
-    if (!lastMessage) return;
+  function processContext(lastMessage, forced = false) {
+    if (!lastMessage) {
+      console.debug('[ChatCopilot] processContext — bailed: lastMessage is empty');
+      return;
+    }
 
     const previouslySeen = session.lastSeenMessage;
 
     // Always record the latest visible message, even when we skip processing.
-    // This is what lets us detect the transition from transient content
-    // (typing indicators) back to a stable message on the next cycle.
     session = { ...session, lastSeenMessage: lastMessage };
 
     // ── Pure passive refresh ────────────────────────────────────────────────
-    // The visible message is identical to what we last observed AND last processed.
-    // Nothing has changed — no new bot turn, skip entirely.
+    // Identical to last observed AND last processed — nothing to do.
     if (lastMessage === session.lastProcessedMessage && lastMessage === previouslySeen) {
+      console.debug('[ChatCopilot] processContext — SKIPPED: passive refresh (no change)');
       return;
     }
 
     // ── Wait for stability ──────────────────────────────────────────────────
-    // The visible message changed since our last observation. This could be a
-    // typing indicator, a timestamp update, or a genuine new bot message.
-    // We don't commit until we've seen the same content on two consecutive
-    // context arrivals — confirming it's a stable new message, not a transient.
-    // Exception: if this is the very first context ever (previouslySeen === null),
-    // process immediately so the sidebar shows suggestions on first open.
-    if (previouslySeen !== null && lastMessage !== previouslySeen) {
+    // New message seen for the first time from MutationObserver — wait for a
+    // second consecutive tick to confirm it is not a transient (typing indicator).
+    // Bypassed when forced=true (explicit user Refresh) or on the very first context.
+    if (!forced && previouslySeen !== null && lastMessage !== previouslySeen) {
+      console.debug('[ChatCopilot] processContext — SKIPPED: waiting for stability',
+        '| previouslySeen:', JSON.stringify((previouslySeen || '').slice(0, 60)),
+        '| lastMessage:', JSON.stringify(lastMessage.slice(0, 60)));
       return;
     }
 
     // ── Confirmed new turn ──────────────────────────────────────────────────
-    // Either: this is the first context ever, OR the message has been stable
-    // across two consecutive observations and differs from what we last processed.
-    // Only at this point do we advance loop counters and update state.
     session = { ...session, lastProcessedMessage: lastMessage };
 
     const detectedState = StateEngine.detectFromText(lastMessage, session);
@@ -374,9 +375,13 @@
       ? StateEngine.STATES.LIMIT_REACHED
       : detectedState;
 
+    console.debug('[ChatCopilot] processContext — PROCESSING | detectedState:', detectedState,
+      '| finalState:', finalState, '| forced:', forced);
+
     session = StateEngine.updateSession(session, finalState);
     saveSession();
     renderAll();
+    console.debug('[ChatCopilot] processContext — renderAll done | session.state:', session.state);
   }
 
   // ─── ACTIONS ──────────────────────────────────────────────────────────────

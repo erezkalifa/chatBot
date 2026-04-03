@@ -177,22 +177,31 @@
   function readVisibleChatMessages() {
     const messages = [];
     const seen = new Set();
+    const hits = [];
 
     for (const selector of CHAT_SELECTORS) {
       try {
         const elements = document.querySelectorAll(selector);
+        let hitCount = 0;
         for (const el of elements) {
           const text = el.innerText?.trim();
           if (text && text.length > 2 && !seen.has(text)) {
             seen.add(text);
             messages.push(text);
+            hitCount++;
           }
         }
+        if (hitCount) hits.push(`${selector}(${hitCount})`);
       } catch (_) {
         // Ignore invalid selectors
       }
     }
 
+    if (hits.length) {
+      console.debug('[ChatCopilot] readVisibleChatMessages — selectors matched:', hits.join(', '));
+    } else {
+      console.debug('[ChatCopilot] readVisibleChatMessages — NO selectors matched. 0 messages extracted.');
+    }
     return messages;
   }
 
@@ -202,14 +211,18 @@
     return messages[messages.length - 1] || '';
   }
 
-  function sendChatContext() {
+  function sendChatContext(forced = false) {
     if (!sidebarFrame?.contentWindow) return;
-    const lastMessage = getLastBotMessage();
+    const allMessages = readVisibleChatMessages();
+    const lastMessage = allMessages[allMessages.length - 1] || '';
+    console.debug('[ChatCopilot] sendChatContext — extracted', allMessages.length,
+      'messages; lastMessage:', JSON.stringify(lastMessage.slice(0, 80)), '| forced:', forced);
     sidebarFrame.contentWindow.postMessage({
       type: 'CHAT_CONTEXT',
       lastMessage,
-      allMessages: readVisibleChatMessages(),
-      tabId: myTabId
+      allMessages,
+      tabId: myTabId,
+      forced
     }, EXTENSION_ORIGIN);
   }
 
@@ -226,7 +239,7 @@
         break;
 
       case 'REFRESH_CONTEXT':
-        sendChatContext();
+        sendChatContext(/* forced= */ true);
         break;
 
       case 'CLOSE_SIDEBAR':
