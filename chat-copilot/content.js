@@ -212,8 +212,7 @@
     }
 
     if (!inputEl) {
-      // Notify sidebar that no input was found
-      sidebarFrame?.contentWindow?.postMessage({ type: 'INSERT_FAILED' }, '*');
+      sidebarFrame?.contentWindow?.postMessage({ type: 'INSERT_FAILED' }, EXTENSION_ORIGIN);
       return;
     }
 
@@ -237,7 +236,7 @@
       }
     }
 
-    sidebarFrame?.contentWindow?.postMessage({ type: 'INSERT_SUCCESS' }, '*');
+    sidebarFrame?.contentWindow?.postMessage({ type: 'INSERT_SUCCESS' }, EXTENSION_ORIGIN);
   }
 
   function isVisible(el) {

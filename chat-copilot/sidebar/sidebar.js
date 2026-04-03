@@ -22,6 +22,16 @@
   // Content scripts execute in the page context, so event.origin is the page origin.
   let parentOrigin = null;
 
+  // Last bot message string we actually ran through state detection.
+  // processContext bails out early if lastMessage equals this — prevents passive
+  // DOM mutations from incrementing the loop counter with no new bot turn.
+  let lastProcessedMessage = null;
+
+  // Set to true once the saved session has been loaded from storage.
+  // saveSession() is a no-op while false, preventing the race where the first
+  // processContext call overwrites persisted data before loadSession() returns.
+  let isHydrated = false;
+
   // ─── DOM REFS ─────────────────────────────────────────────────────────────
 
   const $ = (id) => document.getElementById(id);
@@ -63,11 +73,16 @@
     bindEvents();
   }
 
-  // Called once tabId is known (received in first CHAT_CONTEXT message)
+  // Called once tabId is known (received in first CHAT_CONTEXT message).
+  // Sets isHydrated = true so saveSession() becomes active only after this completes.
+  // Resets lastProcessedMessage so the next processContext call runs against the
+  // restored session rather than being skipped as a duplicate.
   async function loadSession() {
     if (!tabId) return;
     const saved = await Storage.getSession(tabId);
     if (saved) session = { ...session, ...saved };
+    isHydrated = true;
+    lastProcessedMessage = null; // force re-evaluation after session is restored
     renderAll();
   }
 
@@ -269,6 +284,12 @@
   function processContext(lastMessage) {
     if (!lastMessage) return;
 
+    // Skip if the bot message hasn't changed since we last processed one.
+    // This prevents passive DOM mutations (typing indicators, timestamps, etc.)
+    // from being treated as new conversation turns and inflating loop counters.
+    if (lastMessage === lastProcessedMessage) return;
+    lastProcessedMessage = lastMessage;
+
     // Detect state from last visible bot message
     const detectedState = StateEngine.detectFromText(lastMessage, session);
 
@@ -332,9 +353,11 @@
   }
 
   async function saveSession() {
-    if (tabId) {
-      await Storage.saveSession(tabId, session);
-    }
+    // Do not write until the saved session has been loaded; prevents the race
+    // where processContext runs before loadSession() returns and overwrites
+    // persisted data (attempts, state, etc.) with in-memory defaults.
+    if (!isHydrated || !tabId) return;
+    await Storage.saveSession(tabId, session);
   }
 
   // ─── HELPERS ──────────────────────────────────────────────────────────────
