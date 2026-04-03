@@ -3,6 +3,21 @@
 (function () {
   'use strict';
 
+  // ─── STATUS MAP ───────────────────────────────────────────────────────────
+  // Maps internal state names to human-friendly copy and a visual type.
+  // Nothing from this map is shown verbatim in the main UI as a label.
+
+  const STATUS_MAP = {
+    ASK_INTENT:      { text: 'Bot is asking what you need',        type: 'bot'     },
+    ASK_BOOKING:     { text: 'Bot needs your reference number',    type: 'bot'     },
+    VERIFY_IDENTITY: { text: 'Bot is verifying your identity',     type: 'bot'     },
+    CASE_CREATED:    { text: 'A support case has been created',    type: 'bot'     },
+    ASYNC_SUPPORT:   { text: 'Waiting for a callback or email',    type: 'bot'     },
+    LOOP_DETECTED:   { text: 'Bot seems to be going in circles',   type: 'warning' },
+    LIMIT_REACHED:   { text: 'Consider asking for a manager',      type: 'danger'  },
+    HUMAN_CONNECTED: { text: 'Human agent connected',              type: 'human'   }
+  };
+
   // ─── SESSION STATE ────────────────────────────────────────────────────────
 
   let session = {
@@ -38,9 +53,13 @@
   const $ = (id) => document.getElementById(id);
 
   const els = {
+    statusChip:        $('status-chip'),
+    statusText:        $('status-text'),
+    switchRow:         $('switch-row'),
+    btnSwitchHuman:    $('btn-switch-human'),
+    moreToggle:        $('more-toggle'),
+    morePanel:         $('more-panel'),
     modeTabs:          $('mode-tabs'),
-    currentState:      $('current-state'),
-    effectiveMode:     $('effective-mode'),
     humanOptions:      $('human-options'),
     goalSelect:        $('goal-select'),
     toneSelect:        $('tone-select'),
@@ -93,12 +112,25 @@
   // ─── RENDER ───────────────────────────────────────────────────────────────
 
   function renderAll() {
+    renderStatus();
     renderModeTabs();
     renderHumanOptions();
-    renderStatus();
     renderAttempts();
     renderSuggestions();
     renderEscalation();
+  }
+
+  function renderStatus() {
+    const effectiveMode = StrategyEngine.getEffectiveMode(session);
+    const status = STATUS_MAP[session.state] || { text: 'Detecting...', type: 'bot' };
+
+    // Update chip text and type class
+    els.statusChip.className = `status-chip status-${status.type}`;
+    els.statusText.textContent = status.text;
+
+    // Show the "Switch to Human Agent mode" CTA only when not already in human mode
+    const showSwitch = effectiveMode !== 'human';
+    els.switchRow.style.display = showSwitch ? 'block' : 'none';
   }
 
   function renderModeTabs() {
@@ -112,15 +144,6 @@
     els.humanOptions.style.display = effectiveMode === 'human' ? 'block' : 'none';
     els.goalSelect.value = session.goal;
     els.toneSelect.value = session.tone;
-  }
-
-  function renderStatus() {
-    const effectiveMode = StrategyEngine.getEffectiveMode(session);
-    const stateLabel = StateEngine.STATE_LABELS[session.state] || session.state;
-    els.currentState.textContent = stateLabel;
-    els.effectiveMode.textContent =
-      effectiveMode === 'human' ? 'Human Agent' :
-      effectiveMode === 'bot' ? 'Bot' : 'Auto';
   }
 
   function renderAttempts() {
@@ -194,7 +217,21 @@
     els.escalationSection.style.display = show ? 'block' : 'none';
     if (show) {
       els.escalationText.textContent = StrategyEngine.getEscalationStrategy(session.goal);
+      // Surface the guidance automatically — user shouldn't have to hunt for it
+      openMorePanel();
     }
+  }
+
+  function openMorePanel() {
+    els.morePanel.style.display = 'block';
+    els.moreToggle.classList.add('open');
+    els.moreToggle.childNodes[0].textContent = 'Fewer options ';
+  }
+
+  function closeMorePanel() {
+    els.morePanel.style.display = 'none';
+    els.moreToggle.classList.remove('open');
+    els.moreToggle.childNodes[0].textContent = 'More options ';
   }
 
   // ─── EVENTS ───────────────────────────────────────────────────────────────
@@ -220,6 +257,19 @@
       session.tone = els.toneSelect.value;
       saveSession();
       renderSuggestions();
+    });
+
+    // Switch to human agent mode (main-view CTA)
+    els.btnSwitchHuman.addEventListener('click', () => {
+      session.mode = 'human';
+      saveSession();
+      renderAll();
+    });
+
+    // More options expand / collapse
+    els.moreToggle.addEventListener('click', () => {
+      const isOpen = els.morePanel.style.display === 'block';
+      if (isOpen) closeMorePanel(); else openMorePanel();
     });
 
     // Refresh

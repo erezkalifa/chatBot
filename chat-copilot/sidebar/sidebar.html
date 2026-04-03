@@ -27,72 +27,23 @@
     </button>
   </header>
 
-  <!-- Mode Selector -->
-  <section class="section">
-    <label class="section-label">Mode</label>
-    <div class="mode-tabs" id="mode-tabs">
-      <button class="mode-tab active" data-mode="auto">Auto</button>
-      <button class="mode-tab" data-mode="bot">Bot</button>
-      <button class="mode-tab" data-mode="human">Human Agent</button>
-    </div>
-  </section>
+  <!-- ── Main view (always visible) ───────────────────────────────────── -->
 
-  <!-- Status Row -->
-  <section class="section status-section">
-    <div class="status-item">
-      <span class="status-label">State</span>
-      <span class="status-value" id="current-state">Detecting...</span>
-    </div>
-    <div class="status-item">
-      <span class="status-label">Mode</span>
-      <span class="status-value" id="effective-mode">Auto</span>
-    </div>
-  </section>
+  <!-- Plain-language status chip -->
+  <div class="status-chip status-bot" id="status-chip">
+    <span class="status-dot"></span>
+    <span id="status-text">Detecting...</span>
+  </div>
 
-  <!-- Human Agent Options (shown only in human mode) -->
-  <section class="section" id="human-options" style="display:none">
-    <div class="row-two">
-      <div class="field-group">
-        <label class="section-label">Goal</label>
-        <select class="select" id="goal-select">
-          <option value="general">General Assistance</option>
-          <option value="refund">Refund Request</option>
-          <option value="escalation">Escalation</option>
-          <option value="complaint">Formal Complaint</option>
-        </select>
-      </div>
-      <div class="field-group">
-        <label class="section-label">Tone</label>
-        <select class="select" id="tone-select">
-          <option value="polite">Polite</option>
-          <option value="firm">Firm</option>
-          <option value="urgent">Urgent</option>
-        </select>
-      </div>
+  <!-- Primary suggestion -->
+  <section class="suggestion-section">
+    <p class="suggestion-label">Suggested reply</p>
+    <div class="suggestion-box">
+      <p class="suggestion-text" id="suggestion-text">
+        Open a chat and click refresh to get a suggestion.
+      </p>
     </div>
-  </section>
-
-  <!-- Attempt Tracker -->
-  <section class="section">
-    <div class="attempt-header">
-      <span class="section-label">Attempts</span>
-      <span class="attempt-count" id="attempt-count">0 / 10</span>
-    </div>
-    <div class="progress-bar">
-      <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
-    </div>
-    <div class="attempt-status" id="attempt-status">On track</div>
-  </section>
-
-  <!-- Main Suggestion -->
-  <section class="section suggestion-section">
-    <div class="suggestion-header">
-      <span class="section-label">Suggested Reply</span>
-    </div>
-    <div class="suggestion-box" id="main-suggestion">
-      <p class="suggestion-text" id="suggestion-text">Click Refresh to get a suggestion for the current conversation.</p>
-    </div>
-    <div class="suggestion-actions">
+    <div class="action-row">
       <button class="btn btn-secondary" id="btn-copy">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
@@ -109,43 +60,109 @@
     </div>
   </section>
 
-  <!-- Alternatives -->
-  <section class="section">
-    <label class="section-label">Alternatives</label>
-    <div id="alternatives-list" class="alternatives-list">
-      <!-- Populated by JS -->
-    </div>
-  </section>
-
-  <!-- Feedback -->
-  <section class="section feedback-section">
-    <span class="section-label">Did this work?</span>
-    <div class="feedback-buttons">
-      <button class="btn btn-feedback btn-worked" id="btn-worked">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>
-        Worked
-      </button>
-      <button class="btn btn-feedback btn-failed" id="btn-failed">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-        Didn't work
-      </button>
-    </div>
-  </section>
-
-  <!-- Escalation Strategy (shown at limit) -->
-  <section class="section escalation-section" id="escalation-section" style="display:none">
-    <div class="escalation-header">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+  <!-- Switch to human mode CTA (hidden once in human mode) -->
+  <div class="switch-row" id="switch-row">
+    <button class="btn-switch-human" id="btn-switch-human">
+      Switch to Human Agent mode
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
       </svg>
-      <span class="section-label">Next Steps</span>
-    </div>
-    <p class="escalation-text" id="escalation-text"></p>
-  </section>
+    </button>
+  </div>
+
+  <!-- ── More options (collapsed by default) ───────────────────────────── -->
+
+  <button class="more-toggle" id="more-toggle">
+    More options
+    <svg class="more-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>
+  </button>
+
+  <div class="more-panel" id="more-panel">
+
+    <!-- Alternative replies -->
+    <section class="more-section">
+      <p class="more-label">Other suggestions</p>
+      <div id="alternatives-list" class="alternatives-list"></div>
+    </section>
+
+    <!-- Goal / Tone (human agent mode only) -->
+    <section class="more-section" id="human-options" style="display:none">
+      <div class="row-two">
+        <div class="field-group">
+          <label class="more-label" for="goal-select">Goal</label>
+          <select class="select" id="goal-select">
+            <option value="general">General Assistance</option>
+            <option value="refund">Refund Request</option>
+            <option value="escalation">Escalation</option>
+            <option value="complaint">Formal Complaint</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label class="more-label" for="tone-select">Tone</label>
+          <select class="select" id="tone-select">
+            <option value="polite">Polite</option>
+            <option value="firm">Firm</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- Mode tabs (power-user control) -->
+    <section class="more-section">
+      <p class="more-label">Mode</p>
+      <div class="mode-tabs" id="mode-tabs">
+        <button class="mode-tab active" data-mode="auto">Auto</button>
+        <button class="mode-tab" data-mode="bot">Bot</button>
+        <button class="mode-tab" data-mode="human">Human Agent</button>
+      </div>
+    </section>
+
+    <!-- Attempt tracker -->
+    <section class="more-section">
+      <div class="attempt-header">
+        <span class="more-label">Attempts</span>
+        <span class="attempt-count" id="attempt-count">0 / 10</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+      </div>
+      <p class="attempt-status" id="attempt-status">On track</p>
+    </section>
+
+    <!-- Feedback -->
+    <section class="more-section feedback-section">
+      <span class="more-label">Did this work?</span>
+      <div class="feedback-buttons">
+        <button class="btn btn-feedback btn-worked" id="btn-worked">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          Yes
+        </button>
+        <button class="btn btn-feedback btn-failed" id="btn-failed">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+          No
+        </button>
+      </div>
+    </section>
+
+    <!-- Escalation guidance (auto-shown when limit reached) -->
+    <section class="more-section escalation-section" id="escalation-section" style="display:none">
+      <div class="escalation-header">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span class="more-label">Next steps</span>
+      </div>
+      <p class="escalation-text" id="escalation-text"></p>
+    </section>
+
+  </div><!-- /more-panel -->
 
   <!-- Toast notification -->
   <div class="toast" id="toast"></div>
