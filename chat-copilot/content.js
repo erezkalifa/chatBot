@@ -6,10 +6,19 @@
   // Only accept postMessages from our own extension pages (e.g. the sidebar iframe)
   const EXTENSION_ORIGIN = chrome.runtime.getURL('').slice(0, -1); // "chrome-extension://<id>"
 
+  // ── Sidebar width constant — adjust here to resize the panel globally ────
+  const SIDEBAR_WIDTH = 360; // px
+
   let sidebarFrame = null;
   let sidebarContainer = null;
+  let toggleBtn = null;   // hoisted so toggleSidebar can reposition it
   let isOpen = false;
   let myTabId = null;
+
+  // ── Docking state ─────────────────────────────────────────────────────────
+  let dockTarget      = null;  // the element whose margin/padding we shifted
+  let dockProp        = '';    // 'marginRight' or 'paddingRight'
+  let dockOrigValue   = '';    // its original inline value before we touched it
 
   // Fetch this tab's ID from the background (works from content scripts)
   chrome.runtime.sendMessage({ type: 'GET_TAB_ID' }, (response) => {
@@ -27,8 +36,8 @@
     sidebarContainer.style.cssText = `
       position: fixed;
       top: 0;
-      right: -380px;
-      width: 360px;
+      right: -${SIDEBAR_WIDTH + 20}px;
+      width: ${SIDEBAR_WIDTH}px;
       height: 100vh;
       z-index: 2147483647;
       transition: right 0.3s ease;
@@ -49,14 +58,14 @@
     document.body.appendChild(sidebarContainer);
 
     // Toggle button
-    const toggleBtn = document.createElement('button');
+    toggleBtn = document.createElement('button');
     toggleBtn.id = 'chat-copilot-toggle';
     toggleBtn.title = 'Chat Copilot';
     toggleBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="12" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/></svg>`;
     toggleBtn.style.cssText = `
       position: fixed;
       top: 50%;
-      right: 0;
+      right: 0px;
       transform: translateY(-50%);
       z-index: 2147483646;
       background: #4f46e5;
@@ -70,7 +79,7 @@
       align-items: center;
       justify-content: center;
       box-shadow: -2px 0 12px rgba(79,70,229,0.4);
-      transition: background 0.2s;
+      transition: background 0.2s, right 0.3s ease;
     `;
     toggleBtn.addEventListener('mouseenter', () => { toggleBtn.style.background = '#4338ca'; });
     toggleBtn.addEventListener('mouseleave', () => { toggleBtn.style.background = '#4f46e5'; });
@@ -79,12 +88,65 @@
     document.body.appendChild(toggleBtn);
   }
 
+  // ─── DOCKING ────────────────────────────────────────────────────────────────
+
+  // Finds the best element to nudge left when the sidebar opens.
+  // Preference order: common SPA root → first large child of body → body itself.
+  function findDockTarget() {
+    const candidates = ['#app', '#root', '#__next', '#main', 'main', 'body > div'];
+    for (const sel of candidates) {
+      try {
+        const el = document.querySelector(sel);
+        if (el && el !== document.body) return el;
+      } catch (_) {}
+    }
+    return document.body;
+  }
+
+  function applyDocking() {
+    const target = findDockTarget();
+    const style  = getComputedStyle(target);
+
+    // Prefer marginRight; fall back to paddingRight for elements that use padding
+    // for internal layout (e.g. full-bleed flex containers).
+    const prop = (parseFloat(style.marginRight) >= 0 || style.marginRight === '0px')
+      ? 'marginRight'
+      : 'paddingRight';
+
+    dockTarget    = target;
+    dockProp      = prop;
+    dockOrigValue = target.style[prop] || '';  // preserve any inline value
+
+    const existing = parseFloat(style[prop]) || 0;
+    target.style[prop] = `${existing + SIDEBAR_WIDTH}px`;
+
+    // Sanity check: if the page overflows horizontally after docking, undo and
+    // fall back to overlay mode (sidebar will simply cover the page).
+    if (document.documentElement.scrollWidth > document.documentElement.clientWidth + 4) {
+      removeDocking();
+    }
+  }
+
+  function removeDocking() {
+    if (!dockTarget) return;
+    dockTarget.style[dockProp] = dockOrigValue;
+    dockTarget    = null;
+    dockProp      = '';
+    dockOrigValue = '';
+  }
+
   function toggleSidebar() {
     isOpen = !isOpen;
-    sidebarContainer.style.right = isOpen ? '0' : '-380px';
     if (isOpen) {
-      // Send current page chat context to sidebar on open
+      sidebarContainer.style.right = '0';
+      applyDocking();
+      // Reposition the toggle tab to sit flush against the sidebar's left edge
+      if (toggleBtn) toggleBtn.style.right = `${SIDEBAR_WIDTH}px`;
       sendChatContext();
+    } else {
+      sidebarContainer.style.right = `-${SIDEBAR_WIDTH + 20}px`;
+      removeDocking();
+      if (toggleBtn) toggleBtn.style.right = '0px';
     }
   }
 
@@ -169,7 +231,9 @@
 
       case 'CLOSE_SIDEBAR':
         isOpen = false;
-        sidebarContainer.style.right = '-380px';
+        sidebarContainer.style.right = `-${SIDEBAR_WIDTH + 20}px`;
+        removeDocking();
+        if (toggleBtn) toggleBtn.style.right = '0px';
         break;
     }
   });
