@@ -13,7 +13,13 @@
     currentAttempts: 0,
     maxAttempts: 10,
     stateHistory: [],
-    lastContext: null
+    lastContext: null,
+    // Loop detection fingerprints (persisted with session):
+    // lastSeenMessage    — updated on every context arrival, including skipped ones.
+    // lastProcessedMessage — updated only when state detection actually runs.
+    // Together they distinguish passive DOM refreshes from genuine new bot turns.
+    lastSeenMessage: null,
+    lastProcessedMessage: null
   };
 
   let currentSuggestions = { main: '', alternatives: [] };
@@ -21,11 +27,6 @@
   // Locked to the origin of the first message we receive from the content script.
   // Content scripts execute in the page context, so event.origin is the page origin.
   let parentOrigin = null;
-
-  // Last bot message string we actually ran through state detection.
-  // processContext bails out early if lastMessage equals this — prevents passive
-  // DOM mutations from incrementing the loop counter with no new bot turn.
-  let lastProcessedMessage = null;
 
   // Set to true once the saved session has been loaded from storage.
   // saveSession() is a no-op while false, preventing the race where the first
@@ -75,14 +76,17 @@
 
   // Called once tabId is known (received in first CHAT_CONTEXT message).
   // Sets isHydrated = true so saveSession() becomes active only after this completes.
-  // Resets lastProcessedMessage so the next processContext call runs against the
-  // restored session rather than being skipped as a duplicate.
   async function loadSession() {
     if (!tabId) return;
     const saved = await Storage.getSession(tabId);
     if (saved) session = { ...session, ...saved };
+    // Reset lastProcessedMessage so the first processContext after hydration always
+    // runs state detection against the restored session, even if the visible message
+    // text matches what was last processed before the page was closed.
+    // lastSeenMessage is intentionally kept from storage — it accurately records
+    // what was last visible, and the stability check uses it correctly on reload.
+    session.lastProcessedMessage = null;
     isHydrated = true;
-    lastProcessedMessage = null; // force re-evaluation after session is restored
     renderAll();
   }
 
@@ -284,16 +288,38 @@
   function processContext(lastMessage) {
     if (!lastMessage) return;
 
-    // Skip if the bot message hasn't changed since we last processed one.
-    // This prevents passive DOM mutations (typing indicators, timestamps, etc.)
-    // from being treated as new conversation turns and inflating loop counters.
-    if (lastMessage === lastProcessedMessage) return;
-    lastProcessedMessage = lastMessage;
+    const previouslySeen = session.lastSeenMessage;
 
-    // Detect state from last visible bot message
+    // Always record the latest visible message, even when we skip processing.
+    // This is what lets us detect the transition from transient content
+    // (typing indicators) back to a stable message on the next cycle.
+    session = { ...session, lastSeenMessage: lastMessage };
+
+    // ── Pure passive refresh ────────────────────────────────────────────────
+    // The visible message is identical to what we last observed AND last processed.
+    // Nothing has changed — no new bot turn, skip entirely.
+    if (lastMessage === session.lastProcessedMessage && lastMessage === previouslySeen) {
+      return;
+    }
+
+    // ── Wait for stability ──────────────────────────────────────────────────
+    // The visible message changed since our last observation. This could be a
+    // typing indicator, a timestamp update, or a genuine new bot message.
+    // We don't commit until we've seen the same content on two consecutive
+    // context arrivals — confirming it's a stable new message, not a transient.
+    // Exception: if this is the very first context ever (previouslySeen === null),
+    // process immediately so the sidebar shows suggestions on first open.
+    if (previouslySeen !== null && lastMessage !== previouslySeen) {
+      return;
+    }
+
+    // ── Confirmed new turn ──────────────────────────────────────────────────
+    // Either: this is the first context ever, OR the message has been stable
+    // across two consecutive observations and differs from what we last processed.
+    // Only at this point do we advance loop counters and update state.
+    session = { ...session, lastProcessedMessage: lastMessage };
+
     const detectedState = StateEngine.detectFromText(lastMessage, session);
-
-    // Check limit
     const finalState = StateEngine.checkLimitReached(session)
       ? StateEngine.STATES.LIMIT_REACHED
       : detectedState;
