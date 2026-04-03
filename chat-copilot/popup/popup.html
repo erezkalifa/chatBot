@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat Copilot Settings</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+
+  <header class="header">
+    <svg class="logo-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      <circle cx="9" cy="10" r="1" fill="currentColor"/>
+      <circle cx="12" cy="10" r="1" fill="currentColor"/>
+      <circle cx="15" cy="10" r="1" fill="currentColor"/>
+    </svg>
+    <h1 class="title">Chat Copilot</h1>
+  </header>
+
+  <main class="content">
+
+    <div class="field">
+      <label class="label" for="max-attempts">Max Attempts (1–20)</label>
+      <div class="input-row">
+        <input type="range" id="max-attempts-range" min="1" max="20" value="10" class="range">
+        <input type="number" id="max-attempts" min="1" max="20" value="10" class="number-input">
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="label" for="default-mode">Default Mode</label>
+      <select id="default-mode" class="select">
+        <option value="auto">Auto Detect</option>
+        <option value="bot">Bot Mode</option>
+        <option value="human">Human Agent Mode</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label class="label" for="default-goal">Default Goal</label>
+      <select id="default-goal" class="select">
+        <option value="general">General Assistance</option>
+        <option value="refund">Refund Request</option>
+        <option value="escalation">Escalation</option>
+        <option value="complaint">Formal Complaint</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label class="label" for="default-tone">Default Tone</label>
+      <select id="default-tone" class="select">
+        <option value="polite">Polite</option>
+        <option value="firm">Firm</option>
+        <option value="urgent">Urgent</option>
+      </select>
+    </div>
+
+    <button class="btn-save" id="btn-save">Save Settings</button>
+    <p class="saved-msg" id="saved-msg">Settings saved.</p>
+
+    <hr class="divider">
+
+    <div class="danger-zone">
+      <p class="danger-label">Clear all sessions</p>
+      <button class="btn-danger" id="btn-clear">Clear Data</button>
+    </div>
+
+  </main>
+
+  <script src="../utils/storage.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
