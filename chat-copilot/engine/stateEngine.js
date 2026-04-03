@@ -108,15 +108,7 @@ const StateEngine = {
       }
     }
 
-    // Check for loop: if the last 3 detected states are the same
-    if (session.stateHistory && session.stateHistory.length >= 3) {
-      const last3 = session.stateHistory.slice(-3);
-      if (last3.every(s => s === last3[0])) {
-        return this.STATES.LOOP_DETECTED;
-      }
-    }
-
-    // Fall back to current state
+    // Fall back to current state (loop detection is handled in updateSession)
     return session.state || this.STATES.ASK_INTENT;
   },
 
@@ -125,16 +117,34 @@ const StateEngine = {
     return session.currentAttempts >= session.maxAttempts;
   },
 
-  // Update session with new state, maintaining history
+  // Update session with new state.
+  // Tracks consecutive identical states — if the same state is detected
+  // 3 times in a row (without user changing anything) → LOOP_DETECTED.
   updateSession(session, newState) {
     const history = session.stateHistory || [];
     history.push(newState);
     if (history.length > 10) history.shift();
 
+    // Count how many times the newly detected state has appeared consecutively
+    // Only count consecutive repetitions of the same non-loop, non-limit state
+    const isTrackable = newState !== this.STATES.LOOP_DETECTED &&
+                        newState !== this.STATES.LIMIT_REACHED;
+
+    let consecutiveCount = 1;
+    if (isTrackable && session.lastDetectedState === newState) {
+      consecutiveCount = (session.consecutiveStateCount || 1) + 1;
+    }
+
+    const finalState = (isTrackable && consecutiveCount >= 3)
+      ? this.STATES.LOOP_DETECTED
+      : newState;
+
     return {
       ...session,
-      state: newState,
-      stateHistory: history
+      state: finalState,
+      stateHistory: history,
+      lastDetectedState: newState,       // raw detected state, not the final
+      consecutiveStateCount: consecutiveCount
     };
   }
 };

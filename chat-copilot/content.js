@@ -3,9 +3,18 @@
 (function () {
   'use strict';
 
+  // Only accept postMessages from our own extension pages (e.g. the sidebar iframe)
+  const EXTENSION_ORIGIN = chrome.runtime.getURL('').slice(0, -1); // "chrome-extension://<id>"
+
   let sidebarFrame = null;
   let sidebarContainer = null;
   let isOpen = false;
+  let myTabId = null;
+
+  // Fetch this tab's ID from the background (works from content scripts)
+  chrome.runtime.sendMessage({ type: 'GET_TAB_ID' }, (response) => {
+    myTabId = response?.tabId ?? null;
+  });
 
   // ─── SIDEBAR INJECTION ──────────────────────────────────────────────────
 
@@ -137,13 +146,16 @@
     sidebarFrame.contentWindow.postMessage({
       type: 'CHAT_CONTEXT',
       lastMessage,
-      allMessages: readVisibleChatMessages()
-    }, '*');
+      allMessages: readVisibleChatMessages(),
+      tabId: myTabId
+    }, EXTENSION_ORIGIN);
   }
 
   // ─── MESSAGE HANDLING ───────────────────────────────────────────────────
 
   window.addEventListener('message', (event) => {
+    // Only process messages from our extension (the sidebar iframe)
+    if (event.origin !== EXTENSION_ORIGIN) return;
     if (!event.data?.type) return;
 
     switch (event.data.type) {
@@ -250,9 +262,16 @@
     injectSidebar();
   }
 
+  // Debounced wrapper — avoids hammering postMessage on every DOM mutation
+  let debounceTimer = null;
+  function debouncedSendContext() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(sendChatContext, 400);
+  }
+
   // Observe DOM changes to pick up new chat messages
   const observer = new MutationObserver(() => {
-    if (isOpen) sendChatContext();
+    if (isOpen) debouncedSendContext();
   });
   observer.observe(document.body, { childList: true, subtree: true });
 

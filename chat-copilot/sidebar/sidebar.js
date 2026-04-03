@@ -18,6 +18,9 @@
 
   let currentSuggestions = { main: '', alternatives: [] };
   let tabId = null;
+  // Locked to the origin of the first message we receive from the content script.
+  // Content scripts execute in the page context, so event.origin is the page origin.
+  let parentOrigin = null;
 
   // ─── DOM REFS ─────────────────────────────────────────────────────────────
 
@@ -54,18 +57,18 @@
     session.goal = settings.defaultGoal;
     session.tone = settings.defaultTone;
 
-    // Try to get tab ID and load saved session
-    try {
-      const response = await chrome.runtime.sendMessage({ type: 'GET_TAB_ID' });
-      tabId = response?.tabId;
-      if (tabId) {
-        const saved = await Storage.getSession(tabId);
-        if (saved) session = { ...session, ...saved };
-      }
-    } catch (_) {}
-
+    // tabId comes from the content script via CHAT_CONTEXT — see handleContentMessage.
+    // We render defaults immediately and reload from storage once the first context arrives.
     renderAll();
     bindEvents();
+  }
+
+  // Called once tabId is known (received in first CHAT_CONTEXT message)
+  async function loadSession() {
+    if (!tabId) return;
+    const saved = await Storage.getSession(tabId);
+    if (saved) session = { ...session, ...saved };
+    renderAll();
   }
 
   // ─── RENDER ───────────────────────────────────────────────────────────────
@@ -202,7 +205,7 @@
 
     // Refresh
     els.btnRefresh.addEventListener('click', () => {
-      window.parent.postMessage({ type: 'REFRESH_CONTEXT' }, '*');
+      if (parentOrigin) window.parent.postMessage({ type: 'REFRESH_CONTEXT' }, parentOrigin);
       showToast('Refreshing context...');
     });
 
@@ -222,6 +225,12 @@
 
     // Messages from content script
     window.addEventListener('message', (event) => {
+      // Lock to the first origin we receive from; reject anything else after that
+      if (!parentOrigin) {
+        parentOrigin = event.origin;
+      } else if (event.origin !== parentOrigin) {
+        return;
+      }
       if (!event.data?.type) return;
       handleContentMessage(event.data);
     });
@@ -231,9 +240,16 @@
 
   function handleContentMessage(data) {
     switch (data.type) {
-      case 'CHAT_CONTEXT':
+      case 'CHAT_CONTEXT': {
+        // Capture tabId on first message from content script, then load saved session
+        const isFirstContext = (tabId === null && data.tabId != null);
+        if (isFirstContext) {
+          tabId = data.tabId;
+          loadSession(); // async — re-renders once storage is read
+        }
         processContext(data.lastMessage);
         break;
+      }
 
       case 'INSERT_SUCCESS':
         // Increment attempt on successful insert
@@ -284,7 +300,8 @@
   }
 
   function insertText(text) {
-    window.parent.postMessage({ type: 'INSERT_TEXT', text }, '*');
+    if (!parentOrigin) { showToast('Not connected to page yet.'); return; }
+    window.parent.postMessage({ type: 'INSERT_TEXT', text }, parentOrigin);
   }
 
   async function recordFeedback(worked) {
